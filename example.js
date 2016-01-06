@@ -347,6 +347,8 @@ var rm = function (argv) {
   signedtrip({ method: 'DELETE', path: path }, payload, function (err, response, body) {
     if (err) oops('delete', err)
 
+    if (!sessionId) return done('rm')
+
     fs.unlink(configFile, function (err) {
       if (err) oops(configFile, err)
 
