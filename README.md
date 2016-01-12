@@ -84,8 +84,7 @@ If `options.sessionId` is not defined, then the entire persona is deleted, and t
 
         this.client.list(options, function (err, result) { ... })
 
-where `options` is the same as with `this.client.read` _except_ that either `sessionId` or `type` (but not both) may be
-undefined.
+where `options` is the same as with `this.client.read` _except_ that either (or both) `sessionId` or `type` may be `undefined`.
 
 If `err` is `null`, then result is:
 
@@ -138,3 +137,5 @@ The second client should use the decoded string as the `state` parameter to `new
         this.client.list({ sessionId: sessionId }, null, { ... }, function(err) {
             if (err) return ...
         })
+
+You can also take a look at the file `example.js`.
