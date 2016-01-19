@@ -3,6 +3,7 @@ var http = require('http')
 var https = require('https')
 var querystring = require('querystring')
 var underscore = require('underscore')
+var url = require('url')
 var util = require('util')
 var webcrypto = require('./msrcrypto.js')
 
@@ -14,6 +15,8 @@ var Client = function (options, state, callback) {
   self.options = underscore.defaults(options || {}, { server: 'https://vault-staging.brave.com', verboseP: false })
   self.state = state || {}
   self.runtime = {}
+
+  if ((typeof state === 'string') && (!self.url2state(callback))) return
 
   if (self.state.masterKey) {
     if (self.state.server) self.options.server = self.state.server
@@ -252,6 +255,18 @@ Client.prototype.remove = function (options, callback) {
   self.signedtrip({ method: 'DELETE', path: path }, payload, function (err) { callback(err) })
 }
 
+Client.prototype.qrcodeURL = function (options, callback) {
+  var self = this
+
+  var p = 'persona://' + self.state.server.host + '/v1/' + self.state.userId +
+              '?m=' + encodeURIComponent(JSON.stringify(self.state.masterKey)) +
+              '&p=' + encodeURIComponent(JSON.stringify(self.state.privateKey))
+
+  setTimeout(function () {
+    try { callback.bind(self)(null, p) } catch (err0) { if (self.options.verboseP) console.log('oops: ' + err0.toString()) }
+  }, 0)
+}
+
 /*
  *
  * internal functions
@@ -341,6 +356,52 @@ Client.prototype.roundtrip = function (options, callback) {
 
   console.log('<<< ' + options.method + ' ' + options.path)
   if (options.payload) console.log('<<< ' + JSON.stringify(options.payload, null, 2).split('\n').join('\n<<< '))
+}
+
+Client.prototype.url2state = function (callback) {
+  var self = this
+
+  var path
+  var parts = url.parse(self.state)
+  var query = querystring.parse(parts.query)
+  var userId
+
+  if (parts.protocol !== 'persona:') return self.oops(new Error('invalid URI scheme for persona: ' + parts.protocol), callback)
+  path = parts.pathname.split('/')
+  if ((path.length !== 3) || (path[0] !== '')) {
+    return self.oops(new Error('invalid pathname for persona: ' + parts.partname), callback)
+  }
+  if (path[1] !== 'v1') return self.oops(new Error('invalid version for persona: ' + path[1]), callback)
+  userId = path[2].split('-').join('')
+  if ((userId.length !== 32) || (userId.substr(12, 1) !== '4')) {
+    return self.oops(new Error('invalid userID for persona: ' + path[2]), callback)
+  }
+
+  try {
+    query.m = JSON.parse(query.m)
+    query.p = JSON.parse(query.p)
+  } catch (err) {
+    return self.oops(new Error('invalid persona URL parameters: ' + parts.query), callback)
+  }
+
+  self.state = { userId: path[2],
+                 sessionId: uuid(),
+                 masterKey: query.m,
+                 privateKey: query.p,
+                 server: underscore.extend(parts,
+                                           { protocol: parts.hostname !== '127.0.0.1' ? 'https:' : 'http:',
+                                             slashes: true,
+                                             hash: null,
+                                             search: null,
+                                             query: null,
+                                             pathname: '/',
+                                             path: '/'
+                                            })
+               }
+  self.state.server.href = self.state.server.protocol + '//' + self.state.server.host + self.state.server.path
+
+  console.log(JSON.stringify(self.state, null, 2))
+  return true
 }
 
 Client.prototype.oops = function (err, callback) {

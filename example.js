@@ -28,6 +28,10 @@ usage.put = function () {
   usage('put [ -t type [ -s sessionID ] ] [ JSON.stringify(...) ]')
 }
 
+usage.qr = function () {
+  usage('qr')
+}
+
 usage.rm = function () {
   usage('rm [ -t type [ -s sessionID ] ]')
 }
@@ -95,6 +99,7 @@ var run = function () {
   try {
     ({ get: get,
        put: put,
+       qr: qr,
        rm: rm
      }[argv0] || usage)(argv)
   } catch (err) {
@@ -139,7 +144,7 @@ var get = function (argv) {
 
   if ((sessionId !== '*') && (((sessionId) && (type)) || (!sessionId) && (!type))) {
     return client.read({ sessionId: sessionId, type: type }, function (err, result) {
-      if (err) oops('get', err)
+      if (err) oops('read', err)
 
       console.log(JSON.stringify(result, null, 2))
       done('get')
@@ -189,9 +194,27 @@ var put = function (argv) {
 
   try { object2 = JSON.parse(argv0) } catch (err) { oops('put', err) }
   client.write({ sessionId: sessionId, type: type }, object1, object2, function (err) {
-    if (err) oops('delete', err)
+    if (err) oops('write', err)
 
     done('put')
+  })
+}
+
+/*
+ *
+ * generate a persona QR code
+ *
+ */
+
+var qr = function (argv) {
+  if (argv.length > 0) return usage.qr()
+
+  client.qrcodeURL({ }, function (err, result) {
+    if (err) oops('qrcodeURL', err)
+
+    console.log(result)
+
+    done('qr')
   })
 }
 
@@ -219,7 +242,7 @@ var rm = function (argv) {
   } else if (sessionId) return usage.rm()
 
   client.remove({ sessionId: sessionId, type: type }, function (err) {
-    if (err) oops('delete', err)
+    if (err) oops('remote', err)
 
     if (sessionId) return done('rm')
 

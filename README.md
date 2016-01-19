@@ -98,10 +98,12 @@ If `err` is `null`, then result is:
 
 ### Generating a URL string for QRcodes
 
-        this.client.qrcodeURL()
+        this.client.qrcodeURL(options, function (err, result) { ... })
 
-The return value (a string) may be passed to a QRcode generation routine to be scanned by another client.
-The second client should use the decoded string as the `state` parameter to `new client()`.
+where `options` is currently ignored.
+
+The result given to the callback (a string) may be passed to a QRcode generation routine to be scanned by another client.
+The second client should (after parsing the QRcode) use the resulting URL string as the `state` parameter to `new client()`.
 
 
 ## Examples
