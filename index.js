@@ -1,8 +1,9 @@
-var bitgo = require('bitgo')
+var bitgo = null // require('bitgo')
 var http = require('http')
 var https = require('https')
 var querystring = require('querystring')
 var underscore = require('underscore')
+var url = require('url')
 var util = require('util')
 var webcrypto = require('./msrcrypto.js')
 
@@ -15,6 +16,8 @@ var Client = function (options, state, callback) {
   self.state = state || {}
   self.runtime = {}
 
+  if ((typeof state === 'string') && (!self.url2state(callback))) return
+
   if (self.state.masterKey) {
     if (self.state.server) self.options.server = self.state.server
 
@@ -26,7 +29,7 @@ var Client = function (options, state, callback) {
           function (privateKey) {
             self.runtime.pair = { privateKey: privateKey }
 
-            callback(null)
+            callback(null, typeof state !== 'string' ? undefined : self.state)
           }
         )
       }
@@ -35,15 +38,16 @@ var Client = function (options, state, callback) {
     return
   }
 
-  webcrypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']).then(
+  webcrypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, [ 'encrypt', 'decrypt', 'wrapKey', 'unwrapKey' ]).then(
     function (masterKey) {
       self.runtime.masterKey = masterKey
 
       webcrypto.subtle.exportKey('raw', self.runtime.masterKey).then(
         function (exportKey) {
-          var keychain = new (bitgo).BitGo({ env: 'prod' }).keychains().create()
+          var keychain = bitgo ? new (bitgo).BitGo({ env: 'prod' }).keychains().create() : null
 
-          self.state = { userId: uuid(), sessionId: uuid(), xpub: keychain.xpub, xprv: keychain.xprv, masterKey: exportKey }
+          self.state = { userId: uuid(), sessionId: uuid(), masterKey: exportKey }
+          if (keychain) underscore.extend(self.state, { xpub: keychain.xpub, xprv: keychain.xprv })
           webcrypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, [ 'sign', 'verify' ]).then(
             function (pair) {
               self.runtime.pair = pair
@@ -54,6 +58,7 @@ var Client = function (options, state, callback) {
 
                   webcrypto.subtle.exportKey('jwk', self.runtime.pair.publicKey).then(
                     function (publicKey) {
+                      var iv = webcrypto.getRandomValues(new Uint8Array(12))
                       var payload = { version: 1,
                                       /* note that the publicKey is not sent as an x/y pair,
                                          but instead is a concatenation (the 0x04 prefix indicates this)
@@ -66,16 +71,24 @@ var Client = function (options, state, callback) {
 
                       self.state.server = self.options.server
 
-                      try {
-                        self.signedtrip({ method: 'PUT', path: '/v1/users/' + self.state.userId }, payload,
-                          function (err, response) {
-                            if ((!err) && (response.statusCode !== 201)) err = new Error('HTTP response ' + response.statusCode)
-                            callback(err, err ? undefined : self.state)
+                      webcrypto.subtle.encrypt({ name: 'AES-GCM', iv: iv }, self.runtime.masterKey,
+                                               obj2ab(self.state.privateKey)).then(
+                        function (ciphertext) {
+                          payload.privateKey = { encryptedData: ab2hex(ciphertext), iv: ab2hex(iv) }
+                          try {
+                            self.signedtrip({ method: 'PUT', path: '/v1/users/' + self.state.userId }, payload,
+                              function (err, response) {
+                                if ((!err) && (response.statusCode !== 201)) {
+                                  err = new Error('HTTP response ' + response.statusCode)
+                                }
+                                callback(err, err ? undefined : self.state)
+                              }
+                            )
+                          } catch (err) {
+                            callback(err)
                           }
-                        )
-                      } catch (err) {
-                        callback(err)
-                      }
+                        }
+                      )
                     }
                   )
                 }
@@ -114,7 +127,7 @@ Client.prototype.read = function (options, callback) {
     outer = payload.payload
     if (!options.sessionId) outer = outer && outer.state
     inner = outer && outer.payload
-    if (!inner) return callback(null)
+    if (!inner) return callback(null, {})
 
     result = { object1: underscore.omit(inner, 'encryptedData', 'iv') }
 
@@ -252,6 +265,18 @@ Client.prototype.remove = function (options, callback) {
   self.signedtrip({ method: 'DELETE', path: path }, payload, function (err) { callback(err) })
 }
 
+Client.prototype.qrcodeURL = function (options, callback) {
+  var self = this
+
+  var p = 'persona://' + self.state.server.host + '/v1/' + self.state.userId +
+              '?m=' + encodeURIComponent(JSON.stringify(self.state.masterKey)) +
+              '&p=' + encodeURIComponent(JSON.stringify(self.state.privateKey))
+
+  setTimeout(function () {
+    try { callback.bind(self)(null, p) } catch (err0) { if (self.options.verboseP) console.log('oops: ' + err0.toString()) }
+  }, 0)
+}
+
 /*
  *
  * internal functions
@@ -341,6 +366,51 @@ Client.prototype.roundtrip = function (options, callback) {
 
   console.log('<<< ' + options.method + ' ' + options.path)
   if (options.payload) console.log('<<< ' + JSON.stringify(options.payload, null, 2).split('\n').join('\n<<< '))
+}
+
+Client.prototype.url2state = function (callback) {
+  var self = this
+
+  var path
+  var parts = url.parse(self.state)
+  var query = querystring.parse(parts.query)
+  var userId
+
+  if (parts.protocol !== 'persona:') return self.oops(new Error('invalid URI scheme for persona: ' + parts.protocol), callback)
+  path = parts.pathname.split('/')
+  if ((path.length !== 3) || (path[0] !== '')) {
+    return self.oops(new Error('invalid pathname for persona: ' + parts.partname), callback)
+  }
+  if (path[1] !== 'v1') return self.oops(new Error('invalid version for persona: ' + path[1]), callback)
+  userId = path[2].split('-').join('')
+  if ((userId.length !== 32) || (userId.substr(12, 1) !== '4')) {
+    return self.oops(new Error('invalid userID for persona: ' + path[2]), callback)
+  }
+
+  try {
+    query.m = JSON.parse(query.m)
+    query.p = JSON.parse(query.p)
+  } catch (err) {
+    return self.oops(new Error('invalid persona URL parameters: ' + parts.query), callback)
+  }
+
+  self.state = { userId: path[2],
+                 sessionId: uuid(),
+                 masterKey: query.m,
+                 privateKey: query.p,
+                 server: underscore.extend(parts,
+                                           { protocol: parts.hostname !== '127.0.0.1' ? 'https:' : 'http:',
+                                             slashes: true,
+                                             hash: null,
+                                             search: null,
+                                             query: null,
+                                             pathname: '/',
+                                             path: '/'
+                                            })
+               }
+  self.state.server.href = self.state.server.protocol + '//' + self.state.server.host + self.state.server.path
+
+  return true
 }
 
 Client.prototype.oops = function (err, callback) {

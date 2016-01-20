@@ -1,9 +1,5 @@
 #!/usr/bin/env node
 
-/*
-   node example.js [-f config.json] [-s server] [-v] command args ...
- */
-
 var fs = require('fs')
 var path = require('path')
 var url = require('url')
@@ -16,7 +12,8 @@ var url = require('url')
 
 var usage = function (command) {
   if (typeof command !== 'string') command = 'get|put|rm [ args... ]'
-  console.log('usage: node ' + path.basename(process.argv[1]) + ' [ -f file ] [ -v ] [ -s https://... ] ' + command)
+  console.log('usage: node ' + path.basename(process.argv[1]) + ' [ -f file ] [ [ -s https://... ] | [-u personaURL] ] [ -v ]' +
+              command)
   process.exit(1)
 }
 
@@ -28,13 +25,17 @@ usage.put = function () {
   usage('put [ -t type [ -s sessionID ] ] [ JSON.stringify(...) ]')
 }
 
+usage.qr = function () {
+  usage('qr')
+}
+
 usage.rm = function () {
   usage('rm [ -t type [ -s sessionID ] ]')
 }
 
+var personaURL, server
 var argv = process.argv.slice(2)
 var configFile = process.env.CONFIGFILE || 'config.json'
-var server = process.env.SERVER || 'https://vault-staging.brave.com'
 var verboseP = process.env.VERBOSE || false
 
 while (argv.length > 0) {
@@ -50,12 +51,18 @@ while (argv.length > 0) {
 
   if (argv[0] === '-f') configFile = argv[1]
   else if (argv[0] === '-s') server = argv[1]
+  else if (argv[0] === '-u') personaURL = argv[1]
   else usage()
 
   argv = argv.slice(2)
 }
-if (server.indexOf('http') !== 0) server = 'https://' + server
-server = url.parse(server)
+if (personaURL) {
+  if (server) usage()
+} else {
+  if (!server) server = process.env.SERVER || 'https://vault-staging.brave.com'
+  if (server.indexOf('http') !== 0) server = 'https://' + server
+  server = url.parse(server)
+}
 
 /*
  *
@@ -65,8 +72,10 @@ server = url.parse(server)
 
 var client
 
-fs.readFile(configFile, { encoding: 'utf8' }, function (err, data) {
-  client = require('./index.js')({ server: server, verboseP: verboseP }, err ? null : JSON.parse(data), function (err, result) {
+fs.readFile(personaURL ? '/dev/null' : configFile, { encoding: 'utf8' }, function (err, data) {
+  var state = personaURL || (err ? null : JSON.parse(data))
+
+  client = require('./index.js')({ server: server, verboseP: verboseP }, state, function (err, result) {
     if (err) oops('client', err)
 
     if (!result) return run()
@@ -95,6 +104,7 @@ var run = function () {
   try {
     ({ get: get,
        put: put,
+       qr: qr,
        rm: rm
      }[argv0] || usage)(argv)
   } catch (err) {
@@ -139,7 +149,7 @@ var get = function (argv) {
 
   if ((sessionId !== '*') && (((sessionId) && (type)) || (!sessionId) && (!type))) {
     return client.read({ sessionId: sessionId, type: type }, function (err, result) {
-      if (err) oops('get', err)
+      if (err) oops('read', err)
 
       console.log(JSON.stringify(result, null, 2))
       done('get')
@@ -189,9 +199,27 @@ var put = function (argv) {
 
   try { object2 = JSON.parse(argv0) } catch (err) { oops('put', err) }
   client.write({ sessionId: sessionId, type: type }, object1, object2, function (err) {
-    if (err) oops('delete', err)
+    if (err) oops('write', err)
 
     done('put')
+  })
+}
+
+/*
+ *
+ * generate a persona QR code
+ *
+ */
+
+var qr = function (argv) {
+  if (argv.length > 0) return usage.qr()
+
+  client.qrcodeURL({ }, function (err, result) {
+    if (err) oops('qrcodeURL', err)
+
+    console.log(result)
+
+    done('qr')
   })
 }
 
@@ -219,7 +247,7 @@ var rm = function (argv) {
   } else if (sessionId) return usage.rm()
 
   client.remove({ sessionId: sessionId, type: type }, function (err) {
-    if (err) oops('delete', err)
+    if (err) oops('remote', err)
 
     if (sessionId) return done('rm')
 
