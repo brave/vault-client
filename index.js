@@ -107,7 +107,7 @@ Client.prototype.read = function (options, callback) {
   if (options.sessionId) path += '/sessions/' + options.sessionId + '/types/' + options.type
 
   self.roundtrip({ path: path, method: 'GET' }, function (err, response, payload) {
-    var ciphertext, inner, object1, outer, result
+    var ciphertext, inner, outer, result
 
     if (err) return callback(err)
 
@@ -119,7 +119,7 @@ Client.prototype.read = function (options, callback) {
     result = { object1: underscore.omit(inner, 'encryptedData', 'iv') }
 
     ciphertext = underscore.pick(inner, 'encryptedData', 'iv')
-    if (underscore.keys(ciphertext).length === 0) return callback(null, object1)
+    if (underscore.keys(ciphertext).length === 0) return callback(null, result)
 
     webcrypto.subtle.decrypt({ name: 'AES-GCM',
                                iv: hex2ab(ciphertext.iv)
