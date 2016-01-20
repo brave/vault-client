@@ -8,6 +8,7 @@ which is licensed under the [Apache License, Version 2.0](http://www.apache.org/
 The entire library is 770MB, so rather than include it in this repository,
 only the top-level directory is included,
 along with the one file modified in order to allow the library to run under Node.
+(In the `minimized` branch, only a minified version of the modified file is present.)
 It is hoped that the MSR authors will publish the library separately as a Node package,
 allowing the vault-client package to simply reference it.
 
