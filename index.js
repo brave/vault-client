@@ -1,4 +1,4 @@
-var bitgo = require('bitgo')
+var bitgo = null // require('bitgo')
 var http = require('http')
 var https = require('https')
 var querystring = require('querystring')
@@ -29,7 +29,7 @@ var Client = function (options, state, callback) {
           function (privateKey) {
             self.runtime.pair = { privateKey: privateKey }
 
-            callback(null)
+            callback(null, typeof state !== 'string' ? undefined : self.state)
           }
         )
       }
@@ -38,15 +38,16 @@ var Client = function (options, state, callback) {
     return
   }
 
-  webcrypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']).then(
+  webcrypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, [ 'encrypt', 'decrypt', 'wrapKey', 'unwrapKey' ]).then(
     function (masterKey) {
       self.runtime.masterKey = masterKey
 
       webcrypto.subtle.exportKey('raw', self.runtime.masterKey).then(
         function (exportKey) {
-          var keychain = new (bitgo).BitGo({ env: 'prod' }).keychains().create()
+          var keychain = bitgo ? new (bitgo).BitGo({ env: 'prod' }).keychains().create() : null
 
-          self.state = { userId: uuid(), sessionId: uuid(), xpub: keychain.xpub, xprv: keychain.xprv, masterKey: exportKey }
+          self.state = { userId: uuid(), sessionId: uuid(), masterKey: exportKey }
+          if (keychain) underscore.extend(self.state, { xpub: keychain.xpub, xprv: keychain.xprv })
           webcrypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, [ 'sign', 'verify' ]).then(
             function (pair) {
               self.runtime.pair = pair
@@ -57,6 +58,7 @@ var Client = function (options, state, callback) {
 
                   webcrypto.subtle.exportKey('jwk', self.runtime.pair.publicKey).then(
                     function (publicKey) {
+                      var iv = webcrypto.getRandomValues(new Uint8Array(12))
                       var payload = { version: 1,
                                       /* note that the publicKey is not sent as an x/y pair,
                                          but instead is a concatenation (the 0x04 prefix indicates this)
@@ -69,16 +71,24 @@ var Client = function (options, state, callback) {
 
                       self.state.server = self.options.server
 
-                      try {
-                        self.signedtrip({ method: 'PUT', path: '/v1/users/' + self.state.userId }, payload,
-                          function (err, response) {
-                            if ((!err) && (response.statusCode !== 201)) err = new Error('HTTP response ' + response.statusCode)
-                            callback(err, err ? undefined : self.state)
+                      webcrypto.subtle.encrypt({ name: 'AES-GCM', iv: iv }, self.runtime.masterKey,
+                                               obj2ab(self.state.privateKey)).then(
+                        function (ciphertext) {
+                          payload.privateKey = { encryptedData: ab2hex(ciphertext), iv: ab2hex(iv) }
+                          try {
+                            self.signedtrip({ method: 'PUT', path: '/v1/users/' + self.state.userId }, payload,
+                              function (err, response) {
+                                if ((!err) && (response.statusCode !== 201)) {
+                                  err = new Error('HTTP response ' + response.statusCode)
+                                }
+                                callback(err, err ? undefined : self.state)
+                              }
+                            )
+                          } catch (err) {
+                            callback(err)
                           }
-                        )
-                      } catch (err) {
-                        callback(err)
-                      }
+                        }
+                      )
                     }
                   )
                 }
@@ -110,19 +120,19 @@ Client.prototype.read = function (options, callback) {
   if (options.sessionId) path += '/sessions/' + options.sessionId + '/types/' + options.type
 
   self.roundtrip({ path: path, method: 'GET' }, function (err, response, payload) {
-    var ciphertext, inner, object1, outer, result
+    var ciphertext, inner, outer, result
 
     if (err) return callback(err)
 
     outer = payload.payload
     if (!options.sessionId) outer = outer && outer.state
     inner = outer && outer.payload
-    if (!inner) return callback(null)
+    if (!inner) return callback(null, {})
 
     result = { object1: underscore.omit(inner, 'encryptedData', 'iv') }
 
     ciphertext = underscore.pick(inner, 'encryptedData', 'iv')
-    if (underscore.keys(ciphertext).length === 0) return callback(null, object1)
+    if (underscore.keys(ciphertext).length === 0) return callback(null, result)
 
     webcrypto.subtle.decrypt({ name: 'AES-GCM',
                                iv: hex2ab(ciphertext.iv)
@@ -400,7 +410,6 @@ Client.prototype.url2state = function (callback) {
                }
   self.state.server.href = self.state.server.protocol + '//' + self.state.server.host + self.state.server.path
 
-  console.log(JSON.stringify(self.state, null, 2))
   return true
 }
 
