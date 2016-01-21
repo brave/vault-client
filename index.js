@@ -460,7 +460,9 @@ var ab2obj = function (ab) {
 
 // convert a hex string to an array buffer
 var hex2ab = function (s) {
-  return new Uint8Array(new Buffer(typeof s !== 'string' ? '' : s, 'hex'))
+  if (typeof s !== 'string') return
+
+  return new Uint8Array(new Buffer(s, 'hex'))
 }
 
 // convert an array buffer to a hex string, not base64 (MTR is so old-school, he's pre-historic!)
