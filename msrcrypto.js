@@ -6876,7 +6876,6 @@ function MsrcryptoEntropy() {
                         document.attachEvent("onload", this.LoadTimeCallBack);
                     } else {
                           if (typeof module === 'undefined') throw new Error("Can't attach events for entropy collection");
-                          console.log("Can't attach events for entropy collection");
                     }
 
                     this.collectorsRegistered = 1;
@@ -9512,8 +9511,15 @@ var publicMethods = {
         ///     <returns type="ArrayBufferView">Returns ArrayBufferView if supported.</returns>
         /// </signature>
 
-        var i;
-        var randomValues = msrcryptoPseudoRandom.getBytes(array.length);
+        var i, prngCrypto, randomValues;
+
+        prngCrypto = window.crypto || window.msCrypto;
+        if (typeof module !== 'undefined') {
+          randomValues = require('crypto').randomBytes(array.length)
+        } else if (prngCrypto && typeof prngCrypto.getRandomValues === "function") {
+          prngCrypto.getRandomValues(array)
+          return array;
+        } else randomValues = msrcryptoPseudoRandom.getBytes(array.length);
         for (i = 0; i < array.length; i+=1) {
             array[i] = randomValues[i];
         }
