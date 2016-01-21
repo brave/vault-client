@@ -4,6 +4,8 @@
   "description": "An example of client code for the Brave vault.",
   "main": "index.js",
   "scripts": {
+    "checks": "npm run check-security",
+    "check-security": "nsp check",
     "start": "DEBUG=* ./example.js"
   },
   "repository": {
@@ -28,6 +30,7 @@
     "del": "^2.0.2",
     "gulp": "^3.9.0",
     "gulp-standard": "^5.2.2",
+    "nsp": "^2.2.0",
     "run-sequence": "^1.1.0"
   }
 }
