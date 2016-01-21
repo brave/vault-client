@@ -460,6 +460,8 @@ var ab2obj = function (ab) {
 
 // convert a hex string to an array buffer
 var hex2ab = function (s) {
+  if (typeof s !== 'string') return
+
   return new Uint8Array(new Buffer(s, 'hex'))
 }
 
