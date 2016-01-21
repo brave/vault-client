@@ -1,4 +1,5 @@
 var bitgo = null // require('bitgo')
+var crypto = require('crypto')
 var http = require('http')
 var https = require('https')
 var querystring = require('querystring')
@@ -58,7 +59,7 @@ var Client = function (options, state, callback) {
 
                   webcrypto.subtle.exportKey('jwk', self.runtime.pair.publicKey).then(
                     function (publicKey) {
-                      var iv = webcrypto.getRandomValues(new Uint8Array(12))
+                      var iv = getRandomValues(new Uint8Array(12))
                       var payload = { version: 1,
                                       /* note that the publicKey is not sent as an x/y pair,
                                          but instead is a concatenation (the 0x04 prefix indicates this)
@@ -229,7 +230,7 @@ Client.prototype.write = function (options, object1, object2, callback) {
   path = '/v1/users/' + self.state.userId
   if (options.sessionId) path += '/sessions/' + options.sessionId + '/types/' + options.type
 
-  iv = webcrypto.getRandomValues(new Uint8Array(12))
+  iv = getRandomValues(new Uint8Array(12))
   webcrypto.subtle.encrypt({ name: 'AES-GCM', iv: iv }, self.runtime.masterKey, obj2ab(object2 || {})).then(
     function (ciphertext) {
       var payload = underscore.defaults({ encryptedData: ab2hex(ciphertext), iv: ab2hex(iv) }, object1 || {})
@@ -247,7 +248,7 @@ Client.prototype.remove = function (options, callback) {
   var self = this
 
   var path
-  var payload = ab2hex(webcrypto.getRandomValues(new Uint8Array(12)))
+  var payload = ab2hex(getRandomValues(new Uint8Array(12)))
 
   if (options.sessionId === true) options.sessionid = self.state.sessionId
   if (options.sessionId) {
@@ -430,7 +431,7 @@ Client.prototype.oops = function (err, callback) {
 // courtesy of http://stackoverflow.com/questions/105034/create-guid-uuid-in-javascript#2117523
 var uuid = function () {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
-    var r = webcrypto.getRandomValues(new Uint8Array(1))[0] % 16 | 0
+    var r = getRandomValues(new Uint8Array(1))[0] % 16 | 0
     var v = c === 'x' ? r : (r & 0x3 | 0x8)
 
     return v.toString(16).toUpperCase()
@@ -472,6 +473,34 @@ var ab2hex = function (ab) {
 
   for (var i = 0; i < ab.byteLength; i++) buffer[i] = view[i]
   return new Buffer(buffer).toString('hex')
+}
+
+// wrap around webcrypto.getRandomValues() to use high-quality PRNG, when available
+var getRandomValues = function (ab) {
+  var err, i, j, octets
+
+  if (!ab.BYTES_PER_ELEMENT) {
+    err = new Error()
+    err.name = 'TypeMisMatchError'
+    throw err
+  }
+  if (ab.length > 65536) {
+    err = new Error()
+    err.name = 'QuotaExceededError'
+    throw err
+  }
+
+  octets = crypto.randomBytes(ab.length * ab.BYTES_PER_ELEMENT)
+
+  if (ab.BYTES_PER_ELEMENT === 1) ab.set(octets)
+  else {
+    for (i = j = 0; i < ab.length; i++, j += ab.BYTES_PER_ELEMENT) {
+      ab[i] = { 2: (octets[j + 1] << 8) | (octets[j]),
+                4: (octets[j + 3] << 24) | (octets[j + 2] << 16) | (octets[j + 1] << 8) | (octets[j]) }[ab.BYTES_PER_ELEMENT]
+    }
+  }
+
+  return ab
 }
 
 module.exports = Client
