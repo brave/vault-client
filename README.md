@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/brave/vault-client.svg?branch=master)](https://travis-ci.com/brave/vault-client)
+
 # vault-client
 
 An example of client code for the Brave vault.
