@@ -475,6 +475,11 @@ var ab2hex = function (ab) {
   return new Buffer(buffer).toString('hex')
 }
 
+/*
+   intended to comply with https://www.w3.org/TR/WebCryptoAPI/#Crypto-method-getRandomValues
+   even though the entirety of that functionality is not required in this package.
+ */
+
 // wrap around webcrypto.getRandomValues() to use high-quality PRNG, when available
 var getRandomValues = function (ab) {
   var err, i, j, octets
