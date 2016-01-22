@@ -15,7 +15,9 @@
 //    limitations under the License.
 //
 //*******************************************************************************
-if (typeof module !== 'undefined') {
+var nodeJsSupport = (typeof module !== 'undefined') && (this.module !== module)
+
+if (nodeJsSupport) {
     var window = global;
 }
 
@@ -6875,8 +6877,7 @@ function MsrcryptoEntropy() {
                         document.attachEvent("onmousemove", this.MouseEventCallBack);
                         document.attachEvent("onload", this.LoadTimeCallBack);
                     } else {
-                          if (typeof module === 'undefined') throw new Error("Can't attach events for entropy collection");
-                          console.log("Can't attach events for entropy collection");
+                          if (!nodeJsSupport) throw new Error("Can't attach events for entropy collection");
                     }
 
                     this.collectorsRegistered = 1;
@@ -9598,7 +9599,7 @@ return publicMethods;
 
 })();
 
-if (typeof module !== 'undefined') {
+if (nodeJsSupport) {
     msrCrypto.version = msrCryptoVersion;
     module.exports = msrCrypto;
 }
