@@ -12,8 +12,8 @@ var url = require('url')
 
 var usage = function (command) {
   if (typeof command !== 'string') command = 'get|put|rm [ args... ]'
-  console.log('usage: node ' + path.basename(process.argv[1]) + ' [ -f file ] [ [ -s https://... ] | [-u personaURL] ] [ -v ]' +
-              command)
+  console.log('usage: node ' + path.basename(process.argv[1])
+              + ' [ -f file ] [ [ -s https://... ] | [-u personaURL] ] [ -v ] ' + command)
   process.exit(1)
 }
 
