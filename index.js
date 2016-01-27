@@ -24,22 +24,46 @@ var Client = function (options, state, callback) {
 
     webcrypto.subtle.importKey('jwk', self.state.masterKey, { name: 'AES-GCM' }, true, [ 'encrypt', 'decrypt' ]).then(
       function (masterKey) {
+        var finalize, path
+
         self.runtime.masterKey = masterKey
 
-        webcrypto.subtle.importKey('jwk', self.state.privateKey, { name: 'ECDSA', namedCurve: 'P-256' }, true, [ 'sign' ]).then(
-          function (privateKey) {
-            self.runtime.pair = { privateKey: privateKey }
+        finalize = function (updateP) {
+          webcrypto.subtle.importKey('jwk', self.state.privateKey, { name: 'ECDSA', namedCurve: 'P-256' }, true, [ 'sign' ]).then(
+            function (privateKey) {
+              self.runtime.pair = { privateKey: privateKey }
 
-            callback(null, typeof state !== 'string' ? undefined : self.state)
-          }
-        )
+              callback(null, updateP ? self.state : undefined)
+            }
+          )
+        }
+
+        if (self.state.privateKey) return finalize()
+
+        path = '/v1/users/' + self.state.userId
+        self.roundtrip({ path: path, method: 'GET' }, function (err, response, body) {
+          var ciphertext
+
+          if (err) return callback(err)
+
+          ciphertext = body.payload.privateKey
+          webcrypto.subtle.decrypt({ name: 'AES-GCM',
+                                     iv: hex2ab(ciphertext.iv)
+                                   }, self.runtime.masterKey, hex2ab(ciphertext.encryptedData)).then(
+            function (plaintext) {
+              self.state.privateKey = ab2obj(plaintext)
+
+              finalize(true)
+            }
+          )
+        })
       }
     )
 
     return
   }
 
-  webcrypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, [ 'encrypt', 'decrypt', 'wrapKey', 'unwrapKey' ]).then(
+  webcrypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, [ 'encrypt', 'decrypt' ]).then(
     function (masterKey) {
       self.runtime.masterKey = masterKey
 
@@ -120,12 +144,12 @@ Client.prototype.read = function (options, callback) {
   path = '/v1/users/' + self.state.userId
   if (options.sessionId) path += '/sessions/' + options.sessionId + '/types/' + options.type
 
-  self.roundtrip({ path: path, method: 'GET' }, function (err, response, payload) {
+  self.roundtrip({ path: path, method: 'GET' }, function (err, response, body) {
     var ciphertext, inner, outer, result
 
     if (err) return callback(err)
 
-    outer = payload.payload
+    outer = body.payload
     if (!options.sessionId) outer = outer && outer.state
     inner = outer && outer.payload
     if (!inner) return callback(null, {})
@@ -166,7 +190,7 @@ Client.prototype.list = function (options, callback) {
     if (options.type) path += '/' + options.type
   }
 
-  self.roundtrip({ path: path, method: 'GET' }, function (err, response, payload) {
+  self.roundtrip({ path: path, method: 'GET' }, function (err, response, body) {
     var count, inner, results
 
     var next = function (entry, result) {
@@ -201,7 +225,7 @@ Client.prototype.list = function (options, callback) {
 
     if (err) return self.oops(err, callback)
 
-    inner = payload.payload
+    inner = body.payload
     if (!util.isArray(inner)) return self.oops(new Error('invalid response from server'), callback)
 
     results = []
@@ -270,8 +294,7 @@ Client.prototype.qrcodeURL = function (options, callback) {
   var self = this
 
   var p = 'persona://' + self.state.server.host + '/v1/' + self.state.userId +
-              '?m=' + encodeURIComponent(JSON.stringify(self.state.masterKey)) +
-              '&p=' + encodeURIComponent(JSON.stringify(self.state.privateKey))
+              '?m=' + encodeURIComponent(JSON.stringify(self.state.masterKey))
 
   setTimeout(function () {
     try { callback.bind(self)(null, p) } catch (err0) { if (self.options.verboseP) console.log('oops: ' + err0.toString()) }
@@ -390,7 +413,7 @@ Client.prototype.url2state = function (callback) {
 
   try {
     query.m = JSON.parse(query.m)
-    query.p = JSON.parse(query.p)
+    query.p = query.p && JSON.parse(query.p)
   } catch (err) {
     return self.oops(new Error('invalid persona URL parameters: ' + parts.query), callback)
   }
