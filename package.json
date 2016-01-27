@@ -5,7 +5,8 @@
   "main": "index.js",
   "scripts": {
     "start": "DEBUG=* ./example.js",
-    "test": "echo waiting on nsp update"
+    "test": "echo waiting on nsp update",
+    "test-security": "nsp check"
   },
   "repository": {
     "type": "git",
@@ -18,7 +19,7 @@
   },
   "homepage": "https://github.com/brave/vault-client",
   "dependencies": {
-    "bitgo": "^0.11.32",
+    "bitgo": "^0.11.64",
     "underscore": "1.8.3"
   },
   "engines": {
@@ -29,6 +30,7 @@
     "del": "^2.0.2",
     "gulp": "^3.9.0",
     "gulp-standard": "^5.2.2",
+    "nsp": "^2.2.0",
     "run-sequence": "^1.1.0"
   }
 }
