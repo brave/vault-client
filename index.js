@@ -126,6 +126,10 @@ var Client = function (options, state, callback) {
   )
 }
 
+Client.prototype.get = function () {
+  return { personaId: this.state.userId, sessionId: this.state.sessionId }
+}
+
 Client.prototype.read = function (options, callback) {
   var self = this
 

@@ -2,7 +2,7 @@
 
 # vault-client
 
-An example of client code for the Brave vault.
+An example of client code for the [Brave vault](https://github.com/brave/vault).
 
 ## Please Read Carefully
 This package includes the [MSR JavaScript Cryptography Library](http://research.microsoft.com/en-us/projects/msrjscrypto/),
@@ -34,17 +34,31 @@ To begin:
 
 where `options` is:
 
-        { server   :   'http://vault-staging.brave.com'
+        { server   : 'http://vault-staging.brave.com'
         , verboseP : false
         }
 
-and `state` is whatever was previously stored in persistent storage, or `{}`, or a URL string from a decoded QRcode.
+and `state` is either: whatever was previously stored in persistent storage, or `{}`, or a URL string from a decoded QRcode.
 
 The  client endpoint should not be referenced until the callback is invoked.
 When the callback is invoked, if `err` is `null`, and `result` is defined, then `result` must be put into persistent storage.
 (If `err` is `null`,
 then the operation has succeeded,
 regardless of whether `result` is defined or not.)
+
+### Vault Properties
+
+To retrieve the properties for the Ledger, the client calls:
+
+        var properties = this.client.get()
+
+where `properties` is a list of configuration options:
+
+| Property    | Possible Values                      |
+|------------:|--------------------------------------|
+| `personaId` | the identity of the persona          |
+| `sessionId` | the identify of the default session  |
+
 
 ### Reading Persona Data
 

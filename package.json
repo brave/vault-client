@@ -1,6 +1,6 @@
 {
   "name": "vault-client",
-  "version": "0.0.7",
+  "version": "0.1.0",
   "description": "An example of client code for the Brave vault.",
   "main": "index.js",
   "scripts": {
