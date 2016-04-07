@@ -2,7 +2,8 @@ config.json
 
 # Logs
 logs
-*.log
+*.log*
+typescript
 
 # Runtime data
 pids

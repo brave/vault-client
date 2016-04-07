@@ -1,4 +1,3 @@
-var bitgo = null // require('bitgo')
 var crypto = require('crypto')
 var http = require('http')
 var https = require('https')
@@ -13,7 +12,7 @@ var Client = function (options, state, callback) {
 
   var self = this
 
-  self.options = underscore.defaults(options || {}, { server: 'https://vault-staging.brave.com', verboseP: false })
+  self.options = underscore.defaults(options || {}, { server: 'https://vault.brave.com', verboseP: false })
   self.state = state || {}
   self.runtime = {}
 
@@ -69,10 +68,7 @@ var Client = function (options, state, callback) {
 
       webcrypto.subtle.exportKey('raw', self.runtime.masterKey).then(
         function (exportKey) {
-          var keychain = bitgo ? new (bitgo).BitGo({ env: 'prod' }).keychains().create() : null
-
           self.state = { userId: uuid(), sessionId: uuid(), masterKey: exportKey }
-          if (keychain) underscore.extend(self.state, { xpub: keychain.xpub, xprv: keychain.xprv })
           webcrypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, [ 'sign', 'verify' ]).then(
             function (pair) {
               self.runtime.pair = pair
@@ -329,7 +325,7 @@ Client.prototype.qrcodeURL = function (options, callback) {
 Client.prototype.signedtrip = function (options, payload, callback) {
   var self = this
 
-  var nonce = (new Date().getTime() / 1000.0).toString()
+  var nonce = (underscore.now() / 1000.0).toString()
   var combo = JSON.stringify({ userId: self.state.userId, nonce: nonce, payload: payload })
 
   webcrypto.subtle.sign({ name: 'ECDSA', namedCurve: 'P-256', hash: { name: 'SHA-256' } },
