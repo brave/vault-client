@@ -1,9 +1,10 @@
 {
   "name": "vault-client",
-  "version": "0.2.0",
+  "version": "0.2.2",
   "description": "An example of client code for the Brave vault.",
   "main": "index.js",
   "scripts": {
+    "lint": "gulp lint",
     "start": "DEBUG=* ./example.js",
     "test": "npm run test-security",
     "test-security": "nsp check"
