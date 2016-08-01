@@ -5,18 +5,27 @@ var querystring = require('querystring')
 var underscore = require('underscore')
 var url = require('url')
 var util = require('util')
-var webcrypto = require('./msrcrypto.js')
+var webcrypto = require('./msrcrypto.min.js')
 
 var Client = function (options, state, callback) {
   if (!(this instanceof Client)) return new Client(options, state, callback)
 
   var self = this
 
-  self.options = underscore.defaults(options || {}, { server: 'https://vault.brave.com', verboseP: false })
+  self.options = underscore.defaults(underscore.clone(options) || {},
+                                     { server: 'https://vault.brave.com', verboseP: false })
   self.state = state || {}
   self.runtime = {}
 
   if ((typeof state === 'string') && (!self.url2state(callback))) return
+  if (typeof options.roundtrip !== 'undefined') {
+    if (typeof options.roundtrip !== 'function') throw new Error('invalid roundtrip option (must be a function)')
+
+    self._innerTrip = options.roundtrip.bind(self)
+    self.roundtrip = function (params, callback) { self._innerTrip(params, self.options, callback) }
+  } else {
+    self.roundtrip = self._roundTrip
+  }
 
   if (self.state.masterKey) {
     if (self.state.server) self.options.server = self.state.server
@@ -345,27 +354,33 @@ Client.prototype.signedtrip = function (options, payload, callback) {
 }
 
 // roundtrip to the vault
-Client.prototype.roundtrip = function (options, callback) {
+Client.prototype._roundTrip = function (params, callback) {
   var self = this
 
-  var request
-  var client = self.options.server.protocol === 'https:' ? https : http
+  var request, timeoutP
+  var parts = typeof self.options.server === 'string' ? url.parse(self.options.server) : self.options.server
+  var client = parts.protocol === 'https:' ? https : http
 
-  options = underscore.extend(underscore.pick(self.options.server, 'protocol', 'hostname', 'port'), options)
+  params = underscore.extend(underscore.pick(parts, 'protocol', 'hostname', 'port'), params)
 
-  request = client.request(underscore.omit(options, 'payload'), function (response) {
+  request = client.request(underscore.omit(params, [ 'payload' ]), function (response) {
     var body = ''
 
+    if (timeoutP) return
     response.on('data', function (chunk) {
       body += chunk.toString()
     }).on('end', function () {
       var payload
 
+      if (params.timeout) request.setTimeout(0)
+
       if (self.options.verboseP) {
         console.log('>>> HTTP/' + response.httpVersionMajor + '.' + response.httpVersionMinor + ' ' + response.statusCode +
                    ' ' + (response.statusMessage || ''))
       }
-      if (Math.floor(response.statusCode / 100) !== 2) return callback(new Error('HTTP response ' + response.statusCode))
+      if (Math.floor(response.statusCode / 100) !== 2) {
+        return callback(new Error('HTTP response ' + response.statusCode))
+      }
 
       try {
         payload = (response.statusCode !== 204) ? JSON.parse(body) : null
@@ -377,19 +392,22 @@ Client.prototype.roundtrip = function (options, callback) {
       try {
         callback(null, response, payload)
       } catch (err0) {
-        if (self.options.verboseP) console.log('callback: ' + err0.toString())
+        if (self.options.verboseP) console.log('callback: ' + err0.toString() + '\n' + err0.stack)
       }
     }).setEncoding('utf8')
   }).on('error', function (err) {
     callback(err)
+  }).on('timeout', function () {
+    timeoutP = true
+    callback(new Error('timeout'))
   })
-  if (options.payload) request.write(JSON.stringify(options.payload))
+  if (params.payload) request.write(JSON.stringify(params.payload))
   request.end()
 
   if (!self.options.verboseP) return
 
-  console.log('<<< ' + options.method + ' ' + options.path)
-  if (options.payload) console.log('<<< ' + JSON.stringify(options.payload, null, 2).split('\n').join('\n<<< '))
+  console.log('<<< ' + params.method + ' ' + params.path)
+  if (params.payload) console.log('<<< ' + JSON.stringify(params.payload, null, 2).split('\n').join('\n<<< '))
 }
 
 Client.prototype.url2state = function (callback) {
